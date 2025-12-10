@@ -2,10 +2,7 @@ package com.metaverse.msme.address;
 
 import org.springframework.stereotype.Component;
 
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Component
@@ -80,7 +77,37 @@ public class AddressNormalizer {
      * Unique token set for O(1) lookups (mandal/village detection)
      */
     public Set<String> meaningfulTokenSet(String raw) {
-        return new HashSet<>(extractMeaningfulTokens(raw));
+
+        if (raw == null || raw.isBlank()) return Collections.emptySet();
+
+        // Normalize (lowercase, remove punctuation)
+        String norm = normalize(raw);
+
+        // Split into tokens
+        String[] parts = norm.split("\\s+");
+
+        // Words that should NEVER participate in mandal/village detection
+        Set<String> STOP = Set.of(
+                "village", "town", "city", "district", "dist", "mandal",
+                "block", "street", "st", "road", "rd", "lane", "colony",
+                "house", "flat", "building", "doorno", "plot", "near", "opp",
+                "area", "locality", "0", "-"
+        );
+
+        Set<String> out = new LinkedHashSet<>();
+
+        for (String p : parts) {
+            if (p == null) continue;
+            p = p.trim();
+            if (p.isEmpty()) continue;
+            if (STOP.contains(p)) continue;
+            if (p.length() <= 1) continue;
+            if (p.matches("^[0-9]+$")) continue; // remove pure numbers
+
+            out.add(p);
+        }
+
+        return out;
     }
 
 

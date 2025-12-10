@@ -6,6 +6,7 @@ import com.metaverse.msme.extractor.MandalDetectionStatus;
 import com.metaverse.msme.extractor.VillageDetectionResult;
 import com.metaverse.msme.extractor.VillageDetectionStatus;
 import lombok.Getter;
+import lombok.ToString;
 
 import java.util.Set;
 

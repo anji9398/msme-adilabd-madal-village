@@ -3,6 +3,8 @@ package com.metaverse.msme.service;
 import com.metaverse.msme.address.AddressNormalizer;
 import com.metaverse.msme.address.AdminNameParts;
 import com.metaverse.msme.extractor.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -26,33 +28,71 @@ public class AddressParseService {
 
     public AddressParseResult parse(String district, String address) {
 
-        // ✅ 1. Detect mandal
+        // 1️⃣ Detect mandal normally
         MandalDetectionResult mandalResult =
                 mandalDetector.detectMandal(district, address);
+
+    /* ----------------------------------------------------------
+       CASE 1 & CASE 2 HANDLING
+       ---------------------------------------------------------- */
+        if (mandalResult.getStatus() == MandalDetectionStatus.MANDAL_NOT_FOUND) {
+
+            // ⭐ Fallback mandal = district HQ mandal (example: Adilabad)
+            String fallbackMandal = district;
+
+            // Try detecting village under fallback mandal
+            VillageDetectionResult fallbackVillage =
+                    villageDetector.detectVillage(
+                            district,
+                            fallbackMandal,
+                            address
+                    );
+
+            // ⭐ CASE 2 → Valid village FOUND under fallback mandal
+            if (fallbackVillage.getStatus() == VillageDetectionStatus.SINGLE_VILLAGE
+                    || fallbackVillage.getStatus() == VillageDetectionStatus.MULTIPLE_VILLAGES) {
+
+                // Create a fake MandalDetectionResult to satisfy combineResolved()
+                MandalDetectionResult fakeMandalResult =
+                        MandalDetectionResult.single(fallbackMandal);
+
+                return AddressParseResult.combineResolved(
+                        fakeMandalResult,
+                        fallbackMandal,       // mandal = Adilabad
+                        fallbackVillage       // village = Mallapur
+                );
+            }
+
+            // ⭐ CASE 1 → No village found even under fallback mandal
+            // Use existing factory method — gives MANDAL_NOT_FOUND + null village
+            return AddressParseResult.fromMandalResult(mandalResult);
+        }
+
+    /* ----------------------------------------------------------
+       NORMAL FLOW → Mandal already found
+       ---------------------------------------------------------- */
 
         if (mandalResult.getStatus() != MandalDetectionStatus.SINGLE_MANDAL) {
             return AddressParseResult.fromMandalResult(mandalResult);
         }
 
-        // ✅ 2. Resolve mandal name dynamically (THIS IS NEW)
-        String resolvedMandal =
-                resolveMandalDisplayName(
-                        mandalResult.getMandal(),
-                        address
-                );
+        // 2️⃣ Use DB mandal name for village detection
+        String dbMandal = mandalResult.getMandal();
 
-        // ✅ 3. Detect village (use resolved mandal)
         VillageDetectionResult villageResult =
                 villageDetector.detectVillage(
                         district,
-                        resolvedMandal,
+                        dbMandal,
                         address
                 );
 
-        // ✅ 4. Build final response
+        // 3️⃣ Resolve mandal display-friendly version
+        String displayMandal =
+                resolveMandalDisplayName(dbMandal, address);
+
         return AddressParseResult.combineResolved(
                 mandalResult,
-                resolvedMandal,
+                displayMandal,
                 villageResult
         );
     }
@@ -88,6 +128,7 @@ public class AddressParseService {
         }
         return sb.toString().trim();
     }
+
     public AdminNameParts parseAdminName(String name) {
 
         String norm = addressNormalizer.normalize(name);   // "mavala new"
@@ -111,6 +152,4 @@ public class AddressParseService {
                 qualifiers
         );
     }
-
-
 }

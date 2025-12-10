@@ -28,17 +28,16 @@ public class VillageDetector {
             String mandal,
             String rawAddress) {
 
+        // -------------------- SAFETY CHECKS --------------------
         if (district == null || mandal == null || rawAddress == null) {
             return VillageDetectionResult.notFound();
         }
 
-        // ✅ Normalize meaningful tokens from address
         Set<String> tokens = normalizer.meaningfulTokenSet(rawAddress);
         if (tokens.isEmpty()) {
             return VillageDetectionResult.notFound();
         }
 
-        // ✅ Load district hierarchy
         Optional<DistrictHierarchyEntity> opt =
                 repository.findByDistrictNameIgnoreCase(district);
 
@@ -49,9 +48,9 @@ public class VillageDetector {
         JSONObject root = new JSONObject(opt.get().getHierarchyJson());
         JSONArray mandalsArr = root.getJSONArray("mandals");
 
-        // ✅ Find mandal object
+        // -------------------- FIND MANDAL --------------------
         JSONObject mandalObj = null;
-        String mandalNorm = normalizer.normalize(mandal);
+        String mandalNorm = normalizer.normalize(mandal);   // exact normalize
         String mandalPhonetic = phoneticNormalize(mandalNorm);
 
         for (int i = 0; i < mandalsArr.length(); i++) {
@@ -68,80 +67,103 @@ public class VillageDetector {
         }
 
         JSONArray villagesArr = mandalObj.getJSONArray("villages");
-        String normalizedAddress = normalizer.normalize(rawAddress);
 
+        // -------------------- MATCH COLLECTION --------------------
         Set<String> exactMatches = new LinkedHashSet<>();
-        Set<String> fuzzyMatches = new LinkedHashSet<>();
+       Set<String> fuzzyMatches = new LinkedHashSet<>();
+        String hqVillage = null;
 
-        // ✅ Village detection loop
+        // STOP WORDS
+        Set<String> STOP_WORDS = Set.of(
+                phoneticNormalize(normalizer.normalize(district)),
+                "city", "district", "dist", "block"
+        );
+
+        // -------------------- VILLAGE LOOP --------------------
         for (int i = 0; i < villagesArr.length(); i++) {
 
             JSONObject villageObj = villagesArr.getJSONObject(i);
-
             String villageName = villageObj.getString("villageName");
-            boolean isHQ = villageObj.optBoolean("isMandalHQ", false);
 
-            String villageNorm =
-                    phoneticNormalize(normalizer.normalize(villageName));
+            String villageNorm = normalizer.normalize(villageName);
+            String villagePhonetic = phoneticNormalize(villageNorm);
 
-            // ✅ RULE 1: Mandal dominance (except HQ village)
-            if (villageNorm.equals(mandalPhonetic) && !isHQ) {
-                continue;
+            // alias support
+            String aliasNorm = null;
+            String aliasPhonetic = null;
+
+            if (villageObj.has("alisaName") && !villageObj.isNull("aliasName")) {
+                aliasNorm = normalizer.normalize(villageObj.getString("aliasName"));
+                aliasPhonetic = phoneticNormalize(aliasNorm);
             }
 
-            // ✅ RULE 2: Mandal HQ — direct full-address match
-            if (isHQ && normalizedAddress.contains(
-                    normalizer.normalize(villageName))) {
-                exactMatches.add(villageName);
-                continue;
+            // ------------------ FIXED HQ CHECK ------------------
+            // HQ ONLY if villageName == mandalName OR alias == mandalName (exact normalized)
+            boolean isHqVillage =
+                    villageNorm.equals(mandalNorm) ||
+                            (aliasNorm != null && aliasNorm.equals(mandalNorm));
+
+            if (isHqVillage) {
+                hqVillage = villageName;
+                continue;  // HQ fallback only
             }
-            System.out.println("Village JSON = " + villageObj);
-            System.out.println("isMandalHQ = " + villageObj.optBoolean("isMandalHQ", false));
 
-
-            // ✅ RULE 3: Token-based exact + fuzzy match
+            // ------------------ TOKEN MATCHING ------------------
             for (String token : tokens) {
 
-                String tokenNorm =
-                        phoneticNormalize(normalizer.normalize(token));
+                String tokenNorm = normalizer.normalize(token);
+                String tokenPhonetic = phoneticNormalize(tokenNorm);
 
-                if (tokenNorm.equals(villageNorm)) {
+                if (STOP_WORDS.contains(tokenPhonetic)) continue;
+
+                // EXACT match (name or alias)
+                if (tokenPhonetic.equals(villagePhonetic) || (aliasPhonetic != null && tokenPhonetic.equals(aliasPhonetic))) {
+                    exactMatches.add(villageName);
+                    break;
+                }
+                // 2️⃣ Substring match (critical fix)
+                if (villagePhonetic.contains(tokenPhonetic) || tokenPhonetic.contains(villagePhonetic) || (aliasPhonetic != null &&
+                                (aliasPhonetic.contains(tokenPhonetic) || tokenPhonetic.contains(aliasPhonetic)))) {
+
                     exactMatches.add(villageName);
                     break;
                 }
 
-                if (similarity(tokenNorm, villageNorm) >= 0.90) {
+                // FUZZY match (name or alias)
+                if (similarity(tokenPhonetic, villagePhonetic) >= 0.90 ||
+                        (aliasPhonetic != null && similarity(tokenPhonetic, aliasPhonetic) >= 0.90)) {
+
                     fuzzyMatches.add(villageName);
                     break;
                 }
+
+
             }
         }
 
-        // ✅ DECISION BLOCK
-        if (exactMatches.size() == 1) {
-            return VillageDetectionResult.single(
-                    exactMatches.iterator().next()
-            );
-        }
+        // -------------------- DECISION BLOCK --------------------
 
-        if (exactMatches.size() > 1) {
+        if (exactMatches.size() == 1)
+            return VillageDetectionResult.single(exactMatches.iterator().next());
+
+        if (exactMatches.size() > 1)
             return VillageDetectionResult.multiple(exactMatches);
-        }
 
-        if (fuzzyMatches.size() == 1) {
-            return VillageDetectionResult.single(
-                    fuzzyMatches.iterator().next()
-            );
-        }
 
-        if (fuzzyMatches.size() > 1) {
+
+        if (fuzzyMatches.size() == 1)
+            return VillageDetectionResult.single(fuzzyMatches.iterator().next());
+
+        if (fuzzyMatches.size() > 1)
             return VillageDetectionResult.multiple(fuzzyMatches);
-        }
+
+
+        // HQ fallback ONLY if ZERO matches
+        if (hqVillage != null)
+            return VillageDetectionResult.single(hqVillage);
 
         return VillageDetectionResult.notFound();
     }
-
-
 
 
     private double similarity(String s1, String s2) {
@@ -172,7 +194,5 @@ public class VillageDetector {
                 .replace("oo", "u")
                 .replace("oor", "ur");
     }
-
-
 }
 

@@ -1,4 +1,4 @@
-package com.momsme.momsme.model;
+package com.metaverse.msme.model;
 
 import jakarta.persistence.*;
 import lombok.Data;
