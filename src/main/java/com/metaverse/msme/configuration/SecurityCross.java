@@ -17,17 +17,17 @@ import static org.springframework.security.config.Customizer.withDefaults;
 
 @Configuration
 public class SecurityCross {
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                // CORS is already handled by the corsFilter; keeping this is harmless
                 .cors(withDefaults())
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.OPTIONS, "/").permitAll()
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(
-                                "/swagger-ui/",
-                                "/v3/api-docs/"
+                                "/swagger-ui/**",
+                                "/v3/api-docs/**"
                         ).permitAll()
                         .anyRequest().permitAll()
                 );
@@ -39,7 +39,12 @@ public class SecurityCross {
     @Order(Ordered.HIGHEST_PRECEDENCE)
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:4200", "https://metaverseedu.in/**"));
+
+        config.setAllowedOrigins(List.of(
+                "http://localhost:4200",
+                "http://msmedis.s3-website.eu-north-1.amazonaws.com"
+        ));
+
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
@@ -49,3 +54,4 @@ public class SecurityCross {
         return source;
     }
 }
+

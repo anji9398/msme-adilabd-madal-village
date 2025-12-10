@@ -3,10 +3,7 @@ package com.metaverse.msme.controller;
 import com.metaverse.msme.service.AddressParseResult;
 import com.metaverse.msme.service.AddressParseService;
 import io.swagger.v3.oas.annotations.Operation;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/address")
@@ -25,5 +22,11 @@ public class AddressParseController {
             @RequestParam String address) {
 
         return service.parse("Adilabad", address);
+    }
+
+    @PostMapping("/update-all")
+    public String updateAllUnits() {
+        int updated = service.updateAllUnitsVillage();
+        return "Village update completed. Records updated: " + updated;
     }
 }

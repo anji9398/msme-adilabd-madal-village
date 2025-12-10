@@ -3,9 +3,15 @@ package com.metaverse.msme.service;
 import com.metaverse.msme.address.AddressNormalizer;
 import com.metaverse.msme.address.AdminNameParts;
 import com.metaverse.msme.extractor.*;
+import com.metaverse.msme.model.MsmeUnitDetails;
+import com.metaverse.msme.repository.MsmeUnitDetailsRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class AddressParseService {
@@ -13,15 +19,17 @@ public class AddressParseService {
     private final MandalDetector mandalDetector;
     private final VillageDetector villageDetector;
     private final AddressNormalizer addressNormalizer; // ✅ MUST EXIST
+    private final MsmeUnitDetailsRepository repository;
 
     public AddressParseService(
             MandalDetector mandalDetector,
             VillageDetector villageDetector,
-            AddressNormalizer addressNormalizer) {   // ✅ MUST BE HERE
+            AddressNormalizer addressNormalizer, MsmeUnitDetailsRepository repository) {   // ✅ MUST BE HERE
 
         this.mandalDetector = mandalDetector;
         this.villageDetector = villageDetector;
         this.addressNormalizer = addressNormalizer; // ✅ MUST ASSIGN
+        this.repository = repository;
     }
 
     public AddressParseResult parse(String district, String address) {
@@ -150,4 +158,51 @@ public class AddressParseService {
                 qualifiers
         );
     }
+
+    @Transactional
+    public int updateAllUnitsVillage() {
+
+        int page = 0;
+        int size = 2000;          // ✅ ideal for 26k rows
+        int countUpdated = 0;
+
+        Page<MsmeUnitDetails> pageResult;
+
+        do {
+            pageResult = repository.findAll(PageRequest.of(page, size));
+            List<MsmeUnitDetails> updatedUnits = new ArrayList<>();
+
+            for (MsmeUnitDetails unit : pageResult.getContent()) {
+
+                if (unit.getUnitAddress() == null)
+                    continue;
+
+                AddressParseResult result =
+                        parse("Adilabad", unit.getUnitAddress());
+
+                if (result == null)
+                    continue;
+
+                // ✅ Update only when villageId is present & changed
+                if (result.getVillage() != null &&
+                        !Objects.equals(unit.getVillageId(), result.getVillage())) {
+
+                    unit.setVillageId(result.getVillage());
+                    updatedUnits.add(unit);
+                    countUpdated++;
+                }
+            }
+
+            if (!updatedUnits.isEmpty()) {
+                repository.saveAll(updatedUnits);   // ✅ flush per chunk
+            }
+
+            page++;
+
+        } while (pageResult.hasNext());
+
+        return countUpdated;
+    }
+
+
 }
