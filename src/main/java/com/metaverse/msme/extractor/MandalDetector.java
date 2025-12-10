@@ -40,7 +40,7 @@ public class MandalDetector {
     /* ---------------------------------------------------------
        STEP 1 — CLEAN TOKENS (from normalizer)
        --------------------------------------------------------- */
-        Set<String> rawTokens = normalizer.meaningfulTokenSet(rawAddress);
+        List<String> rawTokens = normalizer.meaningfulTokenSet(rawAddress);
 
 
         System.out.println("RAW TOKENS = " + rawTokens);
@@ -93,10 +93,10 @@ public class MandalDetector {
         JSONArray mandalsArr = root.getJSONArray("mandals");
 
         Set<String> exactMatches = new LinkedHashSet<>();
-       Set<String> fuzzyMatches = new LinkedHashSet<>();
+        Set<String> fuzzyMatches = new LinkedHashSet<>();
 
         String hqExactCandidate = null;
-       String hqFuzzyCandidate = null;
+        String hqFuzzyCandidate = null;
 
     /* ---------------------------------------------------------
        STEP 3 — DETECT MANDAL
@@ -158,8 +158,7 @@ public class MandalDetector {
                 }
 
                 // fuzzy by alias
-                if (aliasNorm != null &&
-                        similarity(t, aliasNorm) >= 0.90) {
+                if (aliasNorm != null && similarity(t, aliasNorm) >= 0.90) {
 
                     if (isDistrictHQ) {
                         hqFuzzyCandidate = mandalName;
@@ -169,7 +168,6 @@ public class MandalDetector {
                     break;
                 }
             }
-
         }
 
     /* ---------------------------------------------------------
@@ -208,8 +206,6 @@ public class MandalDetector {
 
         return MandalDetectionResult.notFound();
     }
-
-
 
     private double similarity(String s1, String s2) {
         int dist = levenshtein(s1, s2);
@@ -253,20 +249,17 @@ public class MandalDetector {
         String[] aliases = aliasRaw.split(",");
 
         for (String a : aliases) {
-            String aliasNorm =
-                    phoneticNormalize(normalizer.normalize(a.trim()));
+            String aliasNorm = phoneticNormalize(normalizer.normalize(a.trim()));
 
             if (tokenNorm.equals(aliasNorm)) {
                 return true;
             }
         }
-
         return false;
     }
 
     private String phoneticNormalize(String s) {
-        return s
-                .replace("oo", "u")
+        return s.replace("oo", "u")
                 .replace("oor", "ur");
     }
 

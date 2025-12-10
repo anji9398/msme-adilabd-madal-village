@@ -7,9 +7,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.stereotype.Component;
 
-import java.util.LinkedHashSet;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
 @Component
 public class VillageDetector {
@@ -33,7 +31,7 @@ public class VillageDetector {
             return VillageDetectionResult.notFound();
         }
 
-        Set<String> tokens = normalizer.meaningfulTokenSet(rawAddress);
+        List<String> tokens = normalizer.meaningfulTokenSet(rawAddress);
         if (tokens.isEmpty()) {
             return VillageDetectionResult.notFound();
         }
@@ -70,7 +68,7 @@ public class VillageDetector {
 
         // -------------------- MATCH COLLECTION --------------------
         Set<String> exactMatches = new LinkedHashSet<>();
-       Set<String> fuzzyMatches = new LinkedHashSet<>();
+        Set<String> fuzzyMatches = new LinkedHashSet<>();
         String hqVillage = null;
 
         // STOP WORDS
@@ -108,6 +106,7 @@ public class VillageDetector {
                 continue;  // HQ fallback only
             }
 
+
             // ------------------ TOKEN MATCHING ------------------
             for (String token : tokens) {
 
@@ -115,52 +114,37 @@ public class VillageDetector {
                 String tokenPhonetic = phoneticNormalize(tokenNorm);
 
                 if (STOP_WORDS.contains(tokenPhonetic)) continue;
+                if (tokenPhonetic.length() <= 4) continue;
 
                 // EXACT match (name or alias)
                 if (tokenPhonetic.equals(villagePhonetic) || (aliasPhonetic != null && tokenPhonetic.equals(aliasPhonetic))) {
                     exactMatches.add(villageName);
                     break;
                 }
-                // 2️⃣ Substring match (critical fix)
-                if (villagePhonetic.contains(tokenPhonetic) || tokenPhonetic.contains(villagePhonetic) || (aliasPhonetic != null &&
-                                (aliasPhonetic.contains(tokenPhonetic) || tokenPhonetic.contains(aliasPhonetic)))) {
 
+                if (matchUpToThreeWords(tokens, villagePhonetic, aliasPhonetic)) {
                     exactMatches.add(villageName);
-                    break;
                 }
 
                 // FUZZY match (name or alias)
-                if (similarity(tokenPhonetic, villagePhonetic) >= 0.90 ||
-                        (aliasPhonetic != null && similarity(tokenPhonetic, aliasPhonetic) >= 0.90)) {
-
+                if (similarity(tokenPhonetic, villagePhonetic) >= 0.90 || (aliasPhonetic != null && similarity(tokenPhonetic, aliasPhonetic) >= 0.90)) {
                     fuzzyMatches.add(villageName);
                     break;
                 }
-
-
             }
         }
 
         // -------------------- DECISION BLOCK --------------------
+        if (exactMatches.size() == 1) return VillageDetectionResult.single(exactMatches.iterator().next());
 
-        if (exactMatches.size() == 1)
-            return VillageDetectionResult.single(exactMatches.iterator().next());
+        if (exactMatches.size() > 1)  return VillageDetectionResult.multiple(exactMatches);
 
-        if (exactMatches.size() > 1)
-            return VillageDetectionResult.multiple(exactMatches);
+        if (fuzzyMatches.size() == 1)  return VillageDetectionResult.single(fuzzyMatches.iterator().next());
 
-
-
-        if (fuzzyMatches.size() == 1)
-            return VillageDetectionResult.single(fuzzyMatches.iterator().next());
-
-        if (fuzzyMatches.size() > 1)
-            return VillageDetectionResult.multiple(fuzzyMatches);
-
+        if (fuzzyMatches.size() > 1) return VillageDetectionResult.multiple(fuzzyMatches);
 
         // HQ fallback ONLY if ZERO matches
-        if (hqVillage != null)
-            return VillageDetectionResult.single(hqVillage);
+        if (hqVillage != null) return VillageDetectionResult.single(hqVillage);
 
         return VillageDetectionResult.notFound();
     }
@@ -190,9 +174,41 @@ public class VillageDetector {
     }
 
     private String phoneticNormalize(String s) {
-        return s
-                .replace("oo", "u")
+        return s.replace("oo", "u")
                 .replace("oor", "ur");
+    }
+
+    private boolean matchUpToThreeWords(List<String> tokensPhonetic, String villagePhonetic, String aliasPhonetic) {
+        int size = tokensPhonetic.size();
+
+        String village = villagePhonetic.toLowerCase();
+        String alias = aliasPhonetic != null ? aliasPhonetic.toLowerCase() : null;
+
+        for (int i = 0; i < size; i++) {
+
+            // -------- 1 WORD --------
+            String one = tokensPhonetic.get(i).toLowerCase();
+            if (one.equals(village) || (alias != null && one.equals(alias))) {
+                return true;
+            }
+
+            // -------- 2 WORDS --------
+            if (i + 1 < size) {
+                String two = one + " " + tokensPhonetic.get(i + 1).toLowerCase();
+                if (two.equals(village) || (alias != null && two.equals(alias))) {
+                    return true;
+                }
+            }
+
+            // -------- 3 WORDS --------
+            if (i + 2 < size) {
+                String three = one + " " + tokensPhonetic.get(i + 1).toLowerCase() + " " + tokensPhonetic.get(i + 2).toLowerCase();
+                if (three.equals(village) || (alias != null && three.equals(alias))) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }
 
