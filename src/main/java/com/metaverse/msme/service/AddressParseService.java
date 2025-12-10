@@ -3,8 +3,6 @@ package com.metaverse.msme.service;
 import com.metaverse.msme.address.AddressNormalizer;
 import com.metaverse.msme.address.AdminNameParts;
 import com.metaverse.msme.extractor.*;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
