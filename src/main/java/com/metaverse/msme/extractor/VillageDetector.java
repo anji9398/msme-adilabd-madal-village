@@ -92,7 +92,7 @@ public class VillageDetector {
             String aliasNorm = null;
             String aliasPhonetic = null;
 
-            if (villageObj.has("alisaName") && !villageObj.isNull("aliasName")) {
+            if (villageObj.has("aliasName") && !villageObj.isNull("aliasName")) {
                 aliasNorm = normalizer.normalize(villageObj.getString("aliasName"));
                 aliasPhonetic = phoneticNormalize(aliasNorm);
             }

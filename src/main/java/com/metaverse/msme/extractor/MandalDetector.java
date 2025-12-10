@@ -113,7 +113,7 @@ public class MandalDetector {
 
             // ALIAS normalized & phonetic
             String aliasNorm = null;
-            if (mandalObj.has("alisaName") && !mandalObj.isNull("aliasName")) {
+            if (mandalObj.has("aliasName") && !mandalObj.isNull("aliasName")) {
                 aliasNorm = phoneticNormalize(
                         normalizer.normalize(mandalObj.getString("aliasName")));
             }
