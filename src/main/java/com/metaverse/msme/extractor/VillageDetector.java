@@ -97,9 +97,7 @@ public class VillageDetector {
 
             // ------------------ FIXED HQ CHECK ------------------
             // HQ ONLY if villageName == mandalName OR alias == mandalName (exact normalized)
-            boolean isHqVillage =
-                    villageNorm.equals(mandalNorm) ||
-                            (aliasNorm != null && aliasNorm.equals(mandalNorm));
+            boolean isHqVillage = villageNorm.equals(mandalNorm) || (aliasNorm != null && aliasNorm.equals(mandalNorm));
 
             if (isHqVillage) {
                 hqVillage = villageName;
