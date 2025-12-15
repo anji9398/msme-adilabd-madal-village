@@ -47,8 +47,8 @@ public class MsmeUnitDetails {
     @Column(name = "street")
     private String street;
 
-    @Column(name = "villageId")
-    private String villageId;
+    @Column(name = "villageid")
+    private String villageid;
 
     @Column(name = "village")
     private String village;
