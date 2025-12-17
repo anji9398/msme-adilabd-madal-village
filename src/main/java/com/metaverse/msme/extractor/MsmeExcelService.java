@@ -104,18 +104,15 @@ public class MsmeExcelService {
                     Row row = sheet.createRow(rowIndex++);
 
                     row.createCell(0).setCellValue(value(u.getSlno()));
-                    row.createCell(1).setCellValue(value(u.getUnitName()));
-                    row.createCell(2).setCellValue(value(u.getUnitAddress()));
-                    row.createCell(3).setCellValue(value(u.getVillage()));
-                    row.createCell(4).setCellValue(value(result.getVillage()));
-                    row.createCell(5).setCellValue(value(result.getMandal()));
-                    row.createCell(6).setCellValue(value(u.getDistrict()));
-                    row.createCell(7).setCellValue(
-                            result.getVillageStatus() != null
-                                    ? result.getVillageStatus().name()
-                                    : "NOT_FOUND"
-                    );
-                    row.createCell(8).setCellValue(buildDetails(result));
+                    row.createCell(1).setCellValue(value(u.getDepartmentName()));
+                    row.createCell(2).setCellValue(value(u.getUnitName()));
+                    row.createCell(3).setCellValue(value(u.getUnitAddress()));
+                    row.createCell(4).setCellValue(value(u.getVillage()));
+                    row.createCell(5).setCellValue(value(result.getVillage()));
+                    row.createCell(6).setCellValue(value(result.getMandal()));
+                    row.createCell(7).setCellValue(value(u.getDistrict()));
+                    row.createCell(8).setCellValue(result.getVillageStatus() != null ? result.getVillageStatus().name() :  result.getMandalStatus().name());
+                    row.createCell(9).setCellValue(buildDetails(result));
 
                     lastId = u.getSlno();
                 }
@@ -165,14 +162,15 @@ public class MsmeExcelService {
     private void createHeader(Sheet sheet) {
         Row header = sheet.createRow(0);
         header.createCell(0).setCellValue("SL NO");
-        header.createCell(1).setCellValue("Unit Name");
-        header.createCell(2).setCellValue("RAW ADDRESS");
-        header.createCell(3).setCellValue("Village Name");
-        header.createCell(4).setCellValue("DETECTED VILLAGE");
-        header.createCell(5).setCellValue("DETECTED MANDAL");
-        header.createCell(6).setCellValue("DETECTED DISTRICT");
-        header.createCell(7).setCellValue("ADDRESS STATUS");
-        header.createCell(8).setCellValue("DETAILS");
+        header.createCell(1).setCellValue("DEPARTMENT  NAME");
+        header.createCell(2).setCellValue("Unit Name");
+        header.createCell(3).setCellValue("RAW ADDRESS");
+        header.createCell(4).setCellValue("Village Name");
+        header.createCell(5).setCellValue("DETECTED VILLAGE");
+        header.createCell(6).setCellValue("DETECTED MANDAL");
+        header.createCell(7).setCellValue("DETECTED DISTRICT");
+        header.createCell(8).setCellValue("ADDRESS STATUS");
+        header.createCell(9).setCellValue("DETAILS");
     }
 
     private String buildDetails(AddressParseResult r) {

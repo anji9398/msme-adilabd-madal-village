@@ -41,7 +41,22 @@ public class MandalDetector {
        STEP 1 — CLEAN TOKENS (from normalizer)
        --------------------------------------------------------- */
         List<String> rawTokens = normalizer.meaningfulTokenSet(rawAddress);
+        List<String> strings = telanganaDistricts(); // master districts
+        Set<String> districts = new HashSet<>();
 
+        for (String token : rawTokens) {
+            String normToken = token.trim().toLowerCase();
+
+            for (String district1 : strings) {
+                if (normToken.equalsIgnoreCase(district1)) {
+                    districts.add(district1); // add canonical district name
+                }
+            }
+        }
+
+        if(districts.size()>1) {
+            return MandalDetectionResult.multipleDistricts(districts);
+        }
 
         System.out.println("RAW TOKENS = " + rawTokens);
 
@@ -263,5 +278,42 @@ public class MandalDetector {
                 .replace("oor", "ur");
     }
 
+    private static List<String> telanganaDistricts() {
+        return  List.of(
+                "Adilabad",
+                "Bhadradri Kothagudem",
+                "Hanumakonda",
+                "Hyderabad",
+                "Jagtial",
+                "Jangaon",
+                "Jayashankar Bhupalpally",
+                "Jogulamba Gadwal",
+                "Kamareddy",
+                "Karimnagar",
+                "Khammam",
+                "Komaram Bheem Asifabad",
+                "Mahabubabad",
+                "Mahabubnagar",
+                "Mancherial",
+                "Medak",
+                "Medchal–Malkajgiri",
+                "Mulugu",
+                "Nagarkurnool",
+                "Nalgonda",
+                "Narayanpet",
+                "Nirmal",
+                "Nizamabad",
+                "Peddapalli",
+                "Rajanna Sircilla",
+                "Rangareddy",
+                "Sangareddy",
+                "Siddipet",
+                "Suryapet",
+                "Vikarabad",
+                "Wanaparthy",
+                "Warangal",
+                "Yadadri Bhuvanagiri"
+        );
+    }
 }
 

@@ -33,6 +33,14 @@ public class MandalDetectionResult {
         );
     }
 
+    public static MandalDetectionResult multipleDistricts(Set<String> mandals) {
+        return new MandalDetectionResult(
+                MandalDetectionStatus.MULTIPLE_DISTRICTS,
+                null,
+                mandals
+        );
+    }
+
     public static MandalDetectionResult notFound() {
         return new MandalDetectionResult(
                 MandalDetectionStatus.MANDAL_NOT_FOUND,

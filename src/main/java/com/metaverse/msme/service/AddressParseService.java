@@ -5,12 +5,16 @@ import com.metaverse.msme.address.AdminNameParts;
 import com.metaverse.msme.extractor.*;
 import com.metaverse.msme.model.MsmeUnitDetails;
 import com.metaverse.msme.repository.MsmeUnitDetailsRepository;
+import jakarta.persistence.EntityManager;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Service
@@ -21,10 +25,15 @@ public class AddressParseService {
     private final AddressNormalizer addressNormalizer; // ✅ MUST EXIST
     private final MsmeUnitDetailsRepository repository;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private  EntityManager entityManager;
     public AddressParseService(
             MandalDetector mandalDetector,
             VillageDetector villageDetector,
-            AddressNormalizer addressNormalizer, MsmeUnitDetailsRepository repository) {   // ✅ MUST BE HERE
+            AddressNormalizer addressNormalizer, MsmeUnitDetailsRepository repository) {
 
         this.mandalDetector = mandalDetector;
         this.villageDetector = villageDetector;
@@ -35,8 +44,7 @@ public class AddressParseService {
     public AddressParseResult parse(String district, String address) {
 
         // 1️⃣ Detect mandal normally
-        MandalDetectionResult mandalResult =
-                mandalDetector.detectMandal(district, address);
+        MandalDetectionResult mandalResult = mandalDetector.detectMandal(district, address);
 
     /* ----------------------------------------------------------
        CASE 1 & CASE 2 HANDLING
@@ -137,7 +145,7 @@ public class AddressParseService {
 
     public AdminNameParts parseAdminName(String name) {
 
-        String norm = addressNormalizer.normalize(name);   // "mavala new"
+        String norm = addressNormalizer.normalize(name);
 
         String[] words = norm.split(" ");
 
@@ -152,57 +160,68 @@ public class AddressParseService {
                 baseParts.add(w);
             }
         }
-
-        return new AdminNameParts(
-                String.join(" ", baseParts).trim(),
-                qualifiers
-        );
+        return new AdminNameParts(String.join(" ", baseParts).trim(), qualifiers);
     }
 
     @Transactional
     public int updateAllUnitsVillage() {
 
         int page = 0;
-        int size = 2000;          // ✅ ideal for 26k rows
-        int countUpdated = 0;
+        int size = 2000;                // BATCH SIZE
+        int totalUpdated = 0;
 
         Page<MsmeUnitDetails> pageResult;
 
+        // Cache to avoid parsing same address again
+        Map<String, AddressParseResult> cache = new ConcurrentHashMap<>();
+
         do {
             pageResult = repository.findAll(PageRequest.of(page, size));
-            List<MsmeUnitDetails> updatedUnits = new ArrayList<>();
 
-            for (MsmeUnitDetails unit : pageResult.getContent()) {
+            Map<Integer, String> updateMap = new ConcurrentHashMap<>();
 
-                if (unit.getUnitAddress() == null)
-                    continue;
+            // PARALLEL PROCESSING
+            pageResult.getContent().parallelStream().forEach(unit -> {
 
-                AddressParseResult result =
-                        parse("Adilabad", unit.getUnitAddress());
+                if (unit.getUnitAddress() == null) return;
 
-                if (result == null)
-                    continue;
+                // CACHE: Parse once for repeated addresses
+                AddressParseResult result = cache.computeIfAbsent(
+                        unit.getUnitAddress(),
+                        addr -> parse("Adilabad", addr)
+                );
 
-                // ✅ Update only when villageId is present & changed
-                if (result.getVillage() != null &&
-                        !Objects.equals(unit.getVillageId(), result.getVillage())) {
-
-                    unit.setVillageId(result.getVillage());
-                    updatedUnits.add(unit);
-                    countUpdated++;
+                if (result != null && result.getVillage() != null) {
+                    updateMap.put(unit.getSlno(), result.getVillage());
                 }
+            });
+
+            // BULK UPDATE
+            if (!updateMap.isEmpty()) {
+                batchUpdateVillage(updateMap);
+                totalUpdated += updateMap.size();
             }
 
-            if (!updatedUnits.isEmpty()) {
-                repository.saveAll(updatedUnits);   // ✅ flush per chunk
-            }
+            System.out.println("Batch " + page + " completed. Updated: " + totalUpdated);
 
             page++;
 
-        } while (pageResult.hasNext());
+        } while (!pageResult.isLast());
 
-        return countUpdated;
+        return totalUpdated;
     }
 
 
+
+    public void batchUpdateVillage(Map<Integer, String> updates) {
+
+        String sql = "UPDATE msme_unit_details SET villageId = ? WHERE slno = ?";
+
+        jdbcTemplate.batchUpdate(sql, updates.entrySet(), 500,
+                (ps, entry) -> {
+                    ps.setString(1, entry.getValue());
+                    ps.setInt(2, entry.getKey());
+                }
+        );
+    }
 }
