@@ -24,6 +24,8 @@ public class AddressParseService {
     private final VillageDetector villageDetector;
     private final AddressNormalizer addressNormalizer; // ✅ MUST EXIST
     private final MsmeUnitDetailsRepository repository;
+    @Autowired
+    private  AddressNormalizer normalizer;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -46,46 +48,90 @@ public class AddressParseService {
         // 1️⃣ Detect mandal normally
         MandalDetectionResult mandalResult = mandalDetector.detectMandal(district, address);
 
+        if(mandalResult.getStatus() == MandalDetectionStatus.MULTIPLE_DISTRICTS){
+             return AddressParseResult.fromDistrict(mandalResult);
+
+        }
     /* ----------------------------------------------------------
-       CASE 1 & CASE 2 HANDLING
+       CASE: MANDAL NOT FOUND → DISTRICT LEVEL VILLAGE FALLBACK
        ---------------------------------------------------------- */
         if (mandalResult.getStatus() == MandalDetectionStatus.MANDAL_NOT_FOUND) {
 
-            // ⭐ Fallback mandal = district HQ mandal (example: Adilabad)
-            String fallbackMandal = district;
+            System.out.println("USING detectVillageAcrossDistrict");
 
-            // Try detecting village under fallback mandal
-            VillageDetectionResult fallbackVillage =
-                    villageDetector.detectVillage(
-                            district,
-                            fallbackMandal,
-                            address
+            VillageDetectionResult vResult = villageDetector.detectVillageAcrossDistrict(district, address);
+
+            // ---------- SINGLE VILLAGE ----------
+            if (vResult.getStatus() == VillageDetectionStatus.SINGLE_VILLAGE) {
+
+                String village = vResult.getVillage();
+
+                Set<String> mandals = villageDetector.findMandalsByVillage(district, village);
+
+                // One mandal → assign
+                if (mandals.size() == 1) {
+                    String m = mandals.iterator().next();
+                    return AddressParseResult.combineResolved(
+                            MandalDetectionResult.single(m),
+                            m,
+                            vResult
                     );
+                }
 
-            // ⭐ CASE 2 → Valid village FOUND under fallback mandal
-            if (fallbackVillage.getStatus() == VillageDetectionStatus.SINGLE_VILLAGE
-                    || fallbackVillage.getStatus() == VillageDetectionStatus.MULTIPLE_VILLAGES) {
+                // Multiple mandals → check raw address
+                Optional<String> resolvedFromRaw =
+                        resolveMandalFromRawAddress(address, mandals);
 
-                // Create a fake MandalDetectionResult to satisfy combineResolved()
-                MandalDetectionResult fakeMandalResult =
-                        MandalDetectionResult.single(fallbackMandal);
+                if (resolvedFromRaw.isPresent()) {
+                    String m = resolvedFromRaw.get();
+                    return AddressParseResult.combineResolved(
+                            MandalDetectionResult.single(m),
+                            m,
+                            vResult
+                    );
+                }
 
+                // Still ambiguous
                 return AddressParseResult.combineResolved(
-                        fakeMandalResult,
-                        fallbackMandal,       // mandal = Adilabad
-                        fallbackVillage       // village = Mallapur
+                        MandalDetectionResult.multipleMandalsFromVillage(mandals),
+                        null,
+                        vResult
                 );
             }
 
-            // ⭐ CASE 1 → No village found even under fallback mandal
-            // Use existing factory method — gives MANDAL_NOT_FOUND + null village
-            return AddressParseResult.fromMandalResult(mandalResult);
+            // ---------- MULTIPLE VILLAGES ----------
+            if (vResult.getStatus() == VillageDetectionStatus.MULTIPLE_VILLAGES) {
+                return AddressParseResult.combineResolved(
+                        MandalDetectionResult.notFound(),
+                        null,
+                        vResult
+                );
+            }
+
+            //---------- VILLAGE NOT FOUND ----------
+            if(vResult.getStatus() == VillageDetectionStatus.VILLAGE_NOT_FOUND){
+                String normalize = addressNormalizer.normalize(address);
+                List<String> strings = addressNormalizer.meaningfulTokenSet(normalize);
+                 if (strings.contains(district.toLowerCase())){
+                     return AddressParseResult.combineResolved(
+                             MandalDetectionResult.single(district),
+                             district,
+                             VillageDetectionResult.single(district)
+                     );
+                 }
+            }
+
+            // ---------- VILLAGE NOT FOUND ----------
+            return AddressParseResult.combineResolved(
+                    MandalDetectionResult.notFound(),
+                    null,
+                    VillageDetectionResult.notFound()
+            );
         }
 
     /* ----------------------------------------------------------
        NORMAL FLOW → Mandal already found
        ---------------------------------------------------------- */
-
         if (mandalResult.getStatus() != MandalDetectionStatus.SINGLE_MANDAL) {
             return AddressParseResult.fromMandalResult(mandalResult);
         }
@@ -224,4 +270,111 @@ public class AddressParseService {
                 }
         );
     }
+
+
+    private Optional<String> resolveMandalFromRawAddress(
+            String rawAddress,
+            Set<String> candidateMandals) {
+
+        if (candidateMandals == null || candidateMandals.isEmpty()) {
+            return Optional.empty();
+        }
+
+        for (String mandal : candidateMandals) {
+            if (mandalPresentInRaw(rawAddress, mandal)) {
+                return Optional.of(mandal);
+            }
+        }
+        return Optional.empty();
+    }
+
+
+    private boolean mandalPresentInRaw(String rawAddress, String mandalName) {
+
+        if (rawAddress == null || mandalName == null) {
+            return false;
+        }
+
+        List<String> tokens = normalizer.meaningfulTokenSet(rawAddress);
+
+        String mandalPh = phoneticNormalize(normalizer.normalize(mandalName));
+
+        for (String t : tokens) {
+
+            String tokenPh = phoneticNormalize(normalizer.normalize(t));
+
+            // exact phonetic
+            if (tokenPh.equals(mandalPh)) {
+                return true;
+            }
+
+            // fuzzy safety
+            if (similarity(tokenPh, mandalPh) >= 0.90) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String phoneticNormalize(String s) {
+        return s.replace("oo", "u")
+                .replace("oor", "ur");
+    }
+
+
+    private double similarity(String s1, String s2) {
+        int dist = levenshtein(s1, s2);
+        int max = Math.max(s1.length(), s2.length());
+        return max == 0 ? 1.0 : 1.0 - ((double) dist / max);
+    }
+
+    private int levenshtein(String s1, String s2) {
+        int[][] dp = new int[s1.length() + 1][s2.length() + 1];
+        for (int i = 0; i <= s1.length(); i++) dp[i][0] = i;
+        for (int j = 0; j <= s2.length(); j++) dp[0][j] = j;
+
+        for (int i = 1; i <= s1.length(); i++) {
+            for (int j = 1; j <= s2.length(); j++) {
+                int cost = s1.charAt(i - 1) == s2.charAt(j - 1) ? 0 : 1;
+                dp[i][j] = Math.min(
+                        Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1),
+                        dp[i - 1][j - 1] + cost
+                );
+            }
+        }
+        return dp[s1.length()][s2.length()];
+    }
+
+    private boolean districtPresentInRaw(
+            String rawAddress,
+            String district) {
+
+        if (rawAddress == null || district == null) {
+            return false;
+        }
+
+        List<String> tokens = addressNormalizer.meaningfulTokenSet(rawAddress);
+
+        String districtPh =
+                phoneticNormalize(addressNormalizer.normalize(district));
+
+        for (String t : tokens) {
+            String tPh =
+                    phoneticNormalize(addressNormalizer.normalize(t));
+
+            // exact phonetic match
+            if (tPh.equals(districtPh)) {
+                return true;
+            }
+
+            // fuzzy safety
+            if (similarity(tPh, districtPh) >= 0.90) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+
 }

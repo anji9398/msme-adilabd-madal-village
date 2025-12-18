@@ -118,15 +118,16 @@ public class AddressNormalizer {
 
         // ✅ CASE 1: Structured form (Road/Street:- exists)
         if (lower.matches(".*road\\s*/\\s*street\\s*:-?.*")) {
-            // Remove values ONLY inside Road/Street field
-            lower = lower.replaceAll("road\\s*/\\s*street\\s*:-?\\s*[^,]+", " ");
-
             // Remove other labels but KEEP their values
             lower = lower.replaceAll("\\b(flat\\s*no|building|village/town|block|city)\\s*:-?", " ");
-        }// ✅ CASE 2: Free-text address (no labels)
+
+            // ✅ NEW: remove ONLY one word before 'road' + 'road' itself
+            lower = lower.replaceFirst("\\b\\w+\\b\\s+road\\b\\s*", " ");
+        }
+        // ✅ CASE 2: Free-text address (no labels)
         else {
-            // Remove road-related words globally
-            lower = lower.replaceAll("\\b(road|street|lane|rd|st|colony|area|block)\\b", " ");
+            // ✅ REMOVE ONLY: one word before 'road' + 'road'
+            lower = lower.replaceFirst("\\b\\w+\\b\\s+road\\b\\s*", " ");
 
             // Remove (V), (H) etc
             lower = lower.replaceAll("\\([a-z]+\\)", " ");
@@ -137,9 +138,11 @@ public class AddressNormalizer {
 
         lower = lower.replaceAll("[^a-z\\s]", " ");
         lower = lower.replaceAll("\\s+", " ").trim();
+        lower = lower.replaceAll("\\b(road|street)\\b", " ");
 
         return lower;
     }
+
 
 /*
 

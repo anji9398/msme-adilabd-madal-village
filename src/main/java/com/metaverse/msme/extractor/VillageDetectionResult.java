@@ -7,7 +7,6 @@ public class VillageDetectionResult {
     private final VillageDetectionStatus status;
     private final String village;
     private final Set<String> matchedVillages;
-
     private VillageDetectionResult(VillageDetectionStatus status,
                                    String village,
                                    Set<String> matchedVillages) {

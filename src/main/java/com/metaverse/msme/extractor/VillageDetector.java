@@ -208,5 +208,188 @@ public class VillageDetector {
         }
         return false;
     }
+
+    public VillageDetectionResult detectVillageAcrossDistrict(
+            String district,
+            String rawAddress) {
+
+        System.out.println("### detectVillageAcrossDistrict CALLED ###");
+
+        String hqVillage = null;   // ✅ HQ fallback holder
+
+        if (district == null || rawAddress == null) {
+            return VillageDetectionResult.notFound();
+        }
+
+        List<String> tokens = normalizer.meaningfulTokenSet(rawAddress);
+        if (tokens.isEmpty()) {
+            return VillageDetectionResult.notFound();
+        }
+
+        Optional<DistrictHierarchyEntity> opt =
+                repository.findByDistrictNameIgnoreCase(district);
+
+        if (opt.isEmpty()) {
+            return VillageDetectionResult.notFound();
+        }
+
+        JSONObject root = new JSONObject(opt.get().getHierarchyJson());
+        JSONArray mandalsArr = root.getJSONArray("mandals");
+
+        // ✅ CASE-NORMALIZED SETS
+        Set<String> exactMatches = new LinkedHashSet<>();
+        Set<String> fuzzyMatches = new LinkedHashSet<>();
+
+        // STOP WORDS
+        Set<String> STOP_WORDS = Set.of(
+                phoneticNormalize(normalizer.normalize(district)),
+                "city", "district", "dist", "block", "mandal"
+        );
+
+        // 🔁 LOOP ALL MANDALS → ALL VILLAGES
+        for (int m = 0; m < mandalsArr.length(); m++) {
+
+            JSONObject mandalObj = mandalsArr.getJSONObject(m);
+            String mandalName = mandalObj.getString("mandalName");
+
+            String mandalNorm = phoneticNormalize(normalizer.normalize(mandalName));
+
+            JSONArray villagesArr = mandalObj.getJSONArray("villages");
+
+            for (int i = 0; i < villagesArr.length(); i++) {
+
+                JSONObject villageObj = villagesArr.getJSONObject(i);
+                String villageName = villageObj.getString("villageName");
+
+                String villageNorm = normalizer.normalize(villageName);
+                String villagePh = phoneticNormalize(villageNorm);
+
+                String aliasNorm = null;
+                String aliasPh = null;
+
+                if (villageObj.has("aliasName") && !villageObj.isNull("aliasName")) {
+                    aliasNorm = normalizer.normalize(villageObj.getString("aliasName"));
+                    aliasPh = phoneticNormalize(aliasNorm);
+                }
+
+                // 🚫 HQ CHECK (MANDAL NAME == VILLAGE NAME)
+                boolean isHqVillage = villagePh.equals(mandalNorm) || (aliasPh != null && aliasPh.equals(mandalNorm));
+
+                if (isHqVillage) {
+                       // remember HQ
+                    continue;                  // 🚫 do NOT add to matches
+                }
+
+                // 🔎 TOKEN MATCHING
+                for (String token : tokens) {
+
+                    String tokenNorm =
+                            normalizer.normalize(token);
+                    String tokenPh =
+                            phoneticNormalize(tokenNorm);
+
+                    if (STOP_WORDS.contains(tokenPh)) continue;
+                    if (tokenPh.length() <= 4) continue;
+
+                    // EXACT MATCH
+                    if (tokenPh.equals(villagePh) || (aliasPh != null && tokenPh.equals(aliasPh)) || matchUpToThreeWords(tokens, villagePh, aliasPh)) {
+                        exactMatches.add(villageName.toUpperCase());
+                        break;
+                    }
+
+                    // FUZZY MATCH
+                    if (similarity(tokenPh, villagePh) >= 0.90
+                            || (aliasPh != null && similarity(tokenPh, aliasPh) >= 0.90)) {
+
+                        fuzzyMatches.add(villageName.toUpperCase());
+                        break;
+                    }
+                }
+            }
+        }
+
+        // ---------------- FINAL DECISION ----------------
+
+        // 1️⃣ REAL VILLAGES FOUND → HQ MUST NOT COMPETE
+        if (exactMatches.size() == 1) {
+            return VillageDetectionResult.single(
+                    exactMatches.iterator().next()
+            );
+        }
+
+        if (exactMatches.size() > 1) {
+            return VillageDetectionResult.multiple(exactMatches);
+        }
+
+        // 2️⃣ NO REAL VILLAGE → HQ FALLBACK
+        if (exactMatches.isEmpty() && hqVillage != null) {
+            return VillageDetectionResult.single(hqVillage);
+        }
+
+        // 3️⃣ FUZZY ONLY IF NO EXACT & NO HQ
+        if (fuzzyMatches.size() == 1) {
+            return VillageDetectionResult.single(
+                    fuzzyMatches.iterator().next()
+            );
+        }
+
+        if (fuzzyMatches.size() > 1) {
+            return VillageDetectionResult.multiple(fuzzyMatches);
+        }
+
+        // 4️⃣ NOTHING FOUND
+        return VillageDetectionResult.notFound();
+    }
+
+    public Set<String> findMandalsByVillage(
+            String district,
+            String villageName) {
+
+        Set<String> mandals = new LinkedHashSet<>();
+
+        Optional<DistrictHierarchyEntity> opt =
+                repository.findByDistrictNameIgnoreCase(district);
+
+        if (opt.isEmpty() || villageName == null) {
+            return mandals;
+        }
+
+        JSONObject root = new JSONObject(opt.get().getHierarchyJson());
+        JSONArray mandalsArr = root.getJSONArray("mandals");
+
+        String targetVillagePh =
+                phoneticNormalize(normalizer.normalize(villageName));
+
+        for (int i = 0; i < mandalsArr.length(); i++) {
+
+            JSONObject mandalObj = mandalsArr.getJSONObject(i);
+            String mandalName = mandalObj.getString("mandalName");
+
+            JSONArray villagesArr = mandalObj.getJSONArray("villages");
+
+            for (int j = 0; j < villagesArr.length(); j++) {
+
+                JSONObject v = villagesArr.getJSONObject(j);
+
+                String villageNorm =
+                        phoneticNormalize(
+                                normalizer.normalize(v.getString("villageName")));
+
+                String aliasNorm = null;
+                if (v.has("aliasName") && !v.isNull("aliasName")) {
+                    aliasNorm =
+                            phoneticNormalize(
+                                    normalizer.normalize(v.getString("aliasName")));
+                }
+
+                if (targetVillagePh.equals(villageNorm)
+                        || (aliasNorm != null && targetVillagePh.equals(aliasNorm))) {
+
+                    mandals.add(mandalName);
+                }
+            }
+        }
+        return mandals;
+    }
 }
 

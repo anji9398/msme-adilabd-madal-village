@@ -1,10 +1,7 @@
 package com.metaverse.msme.service;
 
 
-import com.metaverse.msme.extractor.MandalDetectionResult;
-import com.metaverse.msme.extractor.MandalDetectionStatus;
-import com.metaverse.msme.extractor.VillageDetectionResult;
-import com.metaverse.msme.extractor.VillageDetectionStatus;
+import com.metaverse.msme.extractor.*;
 import lombok.Getter;
 import lombok.ToString;
 
@@ -20,15 +17,14 @@ public class AddressParseResult {
     private final VillageDetectionStatus villageStatus;
     private final String village;
     private final Set<String> multipleVillages;
+/*
 
-    private AddressParseResult(
-            MandalDetectionStatus mandalStatus,
-            String mandal,
-            Set<String> multipleMandals,
-            VillageDetectionStatus villageStatus,
-            String village,
-            Set<String> multipleVillages) {
+    private final DistrictDetectionStatus DistrictStatus;
+    private final String district;
+    private final Set<String> multipleDistricts;
+*/
 
+    private AddressParseResult(MandalDetectionStatus mandalStatus, String mandal, Set<String> multipleMandals, VillageDetectionStatus villageStatus, String village, Set<String> multipleVillages) {
         this.mandalStatus = mandalStatus;
         this.mandal = mandal;
         this.multipleMandals = multipleMandals;
@@ -40,11 +36,22 @@ public class AddressParseResult {
     /* --------------------------------------------
        ✅ Existing method (KEEP AS IS)
        -------------------------------------------- */
-    public static AddressParseResult fromMandalResult(
-            MandalDetectionResult m) {
+    public static AddressParseResult fromMandalResult(MandalDetectionResult m) {
 
         return new AddressParseResult(
-                m.getStatus(),
+                MandalDetectionStatus.MULTIPLE_MANDALS,
+                m.getMandal(),
+                m.getMatchedMandals(),
+                null,
+                null,
+                null
+        );
+    }
+
+    public static AddressParseResult fromDistrict(MandalDetectionResult m) {
+
+        return new AddressParseResult(
+                MandalDetectionStatus.MULTIPLE_DISTRICTS,
                 m.getMandal(),
                 m.getMatchedMandals(),
                 null,
@@ -87,4 +94,6 @@ public class AddressParseResult {
                 villageResult.getMatchedVillages()
         );
     }
+
+
 }
