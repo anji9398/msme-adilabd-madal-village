@@ -49,6 +49,17 @@ public class MandalDetectionResult {
         );
     }
 
+    public static MandalDetectionResult multipleMandalsFromVillage(
+            Set<String> mandals) {
+
+        return new MandalDetectionResult(
+                MandalDetectionStatus.MULTIPLE_MANDALS_FROM_VILLAGE,
+                null,                 // mandal
+                mandals               // multipleMandals
+        );
+    }
+
+
     public MandalDetectionStatus getStatus() {
         return status;
     }

@@ -44,7 +44,7 @@ public class AddressParseResult {
             MandalDetectionResult m) {
 
         return new AddressParseResult(
-                m.getStatus(),
+                MandalDetectionStatus.VILLAGE_NOT_FOUND,
                 m.getMandal(),
                 m.getMatchedMandals(),
                 null,
