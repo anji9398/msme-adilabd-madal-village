@@ -120,10 +120,14 @@ public class AddressNormalizer {
         if (lower.matches(".*road\\s*/\\s*street\\s*:-?.*")) {
             // Remove other labels but KEEP their values
             lower = lower.replaceAll("\\b(flat\\s*no|building|village/town|block|city)\\s*:-?", " ");
-        }// ✅ CASE 2: Free-text address (no labels)
+
+            // ✅ NEW: remove ONLY one word before 'road' + 'road' itself
+            lower = lower.replaceFirst("\\b\\w+\\b\\s+road\\b\\s*", " ");
+        }
+        // ✅ CASE 2: Free-text address (no labels)
         else {
-            // Remove road-related words globally
-            lower = lower.replaceAll("\\b(road|street|lane|rd|st|area|block)\\b", " ");
+            // ✅ REMOVE ONLY: one word before 'road' + 'road'
+            lower = lower.replaceFirst("\\b\\w+\\b\\s+road\\b\\s*", " ");
 
             // Remove (V), (H) etc
             lower = lower.replaceAll("\\([a-z]+\\)", " ");
@@ -138,6 +142,7 @@ public class AddressNormalizer {
 
         return lower;
     }
+
 
 /*
 

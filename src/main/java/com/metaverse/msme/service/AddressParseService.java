@@ -48,6 +48,10 @@ public class AddressParseService {
         // 1️⃣ Detect mandal normally
         MandalDetectionResult mandalResult = mandalDetector.detectMandal(district, address);
 
+        if(mandalResult.getStatus() == MandalDetectionStatus.MULTIPLE_DISTRICTS){
+             return AddressParseResult.fromDistrict(mandalResult);
+
+        }
     /* ----------------------------------------------------------
        CASE: MANDAL NOT FOUND → DISTRICT LEVEL VILLAGE FALLBACK
        ---------------------------------------------------------- */
@@ -62,8 +66,7 @@ public class AddressParseService {
 
                 String village = vResult.getVillage();
 
-                Set<String> mandals =
-                        villageDetector.findMandalsByVillage(district, village);
+                Set<String> mandals = villageDetector.findMandalsByVillage(district, village);
 
                 // One mandal → assign
                 if (mandals.size() == 1) {
